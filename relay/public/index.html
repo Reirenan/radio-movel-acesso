@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c101a">
+  <title>Painel Casa</title>
+  <link rel="stylesheet" href="/panel.css">
+  <script defer src="/panel.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="/" aria-label="Painel Casa"><span class="mark" aria-hidden="true">⌂</span><span>Painel<span class="accent"> Casa</span></span></a>
+    <nav id="navigation" hidden aria-label="Navegação"><a href="#dashboard">Visão geral</a><a href="#devicesSection">Dispositivos</a></nav>
+    <button id="logout" class="quiet" hidden>Sair <span aria-hidden="true">↗</span></button>
+  </div>
+</header>
+<main>
+  <noscript>Ative o JavaScript para usar o Painel Casa.</noscript>
+  <form id="login" class="login" hidden>
+    <div class="login-art" aria-hidden="true"></div>
+    <div class="login-content">
+      <div class="tag">ACESSO PRIVADO</div>
+      <h1>Acesse sua casa.</h1>
+      <p>Consulte seus dispositivos e controle o clima de onde estiver.</p>
+      <label for="user">Usuário</label>
+      <input id="user" autocomplete="username" required maxlength="80">
+      <label for="password">Senha</label>
+      <input id="password" type="password" autocomplete="current-password" required maxlength="128">
+      <button class="primary">Entrar no painel <span aria-hidden="true">↗</span></button>
+      <p id="loginError" role="status"></p>
+    </div>
+  </form>
+  <div id="dashboard" hidden>
+    <div class="title">
+      <div><div class="tag">VISÃO GERAL</div><h1 id="house">Minha casa</h1><p id="updated">Aguardando sincronização</p></div>
+      <button class="quiet" id="refresh"><span aria-hidden="true">↻</span> Atualizar</button>
+    </div>
+    <div class="grid">
+      <section class="card climate" aria-labelledby="device">
+        <div class="climate-hero">
+          <div class="row"><span class="weather" aria-hidden="true">❄</span><span id="power" class="pill">Estado indisponível</span></div>
+          <h2 id="device">Ar-condicionado</h2><p id="room"></p>
+          <div class="reading"><span id="setpoint">—</span><small>°C</small></div>
+          <p>Temperatura programada</p>
+        </div>
+        <div class="controls">
+          <div class="row"><h3>Controles</h3><span class="muted" id="controlHint"></span></div>
+          <div class="actions power-actions"><button class="primary" id="on" disabled><span aria-hidden="true">⏻</span> Ligar</button><button class="quiet" id="off" disabled>Desligar</button></div>
+          <form id="temperature" hidden><label for="degrees">Ajustar temperatura</label><div class="actions"><button type="button" class="quiet step" id="minus" aria-label="Diminuir temperatura">−</button><input id="degrees" type="number" min="16" max="30" required><button type="button" class="quiet step" id="plus" aria-label="Aumentar temperatura">+</button><button class="quiet apply">Aplicar</button></div></form>
+          <form id="fan" hidden><label for="speed">Ventilador (%)</label><div class="actions"><input id="speed" type="number" min="0" max="100" required><button class="quiet apply">Aplicar</button></div></form>
+          <p id="command" role="status"></p>
+        </div>
+      </section>
+      <div class="side">
+        <section class="card connection-card">
+          <div class="row"><span class="tile" aria-hidden="true">▯</span><span class="pill" id="connection">Offline</span></div>
+          <h2>Conexão com o POCO</h2><p id="connectionHint"></p>
+        </section>
+        <section class="card" id="devicesSection">
+          <div class="row"><h2>Dispositivos</h2><span id="count" class="pill">0</span></div>
+          <div id="devices"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <p id="pageError" role="status"></p>
+</main>
+</body>
+</html>

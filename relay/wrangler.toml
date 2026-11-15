@@ -1,0 +1,18 @@
+name = "painel-casa"
+main = "worker.mjs"
+compatibility_date = "2026-04-01"
+workers_dev = true
+preview_urls = false
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[[durable_objects.bindings]]
+name = "CASA"
+class_name = "Casa"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Casa"]

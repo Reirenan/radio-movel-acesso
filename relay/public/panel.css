@@ -1,0 +1,69 @@
+*{box-sizing:border-box}
+:root{color-scheme:dark;font-family:Geist,"Segoe UI",sans-serif;color:#edf2ff;background:#0c101a;--surface:#141a28;--line:#293248;--muted:#a6b3cd;--accent:#a8bdff}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% 0,#1a2440 0,transparent 53%)}
+a{color:inherit;text-decoration:none}
+.top{border-bottom:1px solid var(--line);background:#0d121eea}
+.bar,main{width:min(100% - 48px,1120px);margin:auto}
+.bar{display:flex;align-items:center;gap:46px;min-height:70px}
+.brand,.row,.actions,.title,nav{display:flex;align-items:center;gap:12px}
+.brand{font-weight:750;letter-spacing:-.035em;font-size:1.2rem;white-space:nowrap}
+.mark,.tile,.weather{display:grid;place-items:center;border-radius:12px;width:42px;height:42px;font-size:24px;color:#c5d3ff;background:#26375e;border:1px solid #3b5185}
+.accent{color:var(--accent)}
+nav{gap:24px;color:var(--muted);font-size:.9rem}
+nav a:hover{color:white}
+.bar button{margin-left:auto}
+main{padding:48px 0 64px}
+.title,.row{justify-content:space-between}
+h1,h2,h3{margin:0;letter-spacing:-.035em}
+h1{font-size:clamp(2.45rem,6vw,4rem);line-height:1.04}
+h2{font-size:1.22rem}
+h3{font-size:1.03rem}
+p{color:var(--muted);margin:7px 0 0;line-height:1.5}
+.tag{font-size:.7rem;letter-spacing:.14em;color:#b4c5ff;font-weight:700;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:22px;margin-top:27px}
+.side{display:grid;align-content:start;gap:22px}
+.card,.login{border:1px solid var(--line);border-radius:22px;background:var(--surface);overflow:hidden}
+.card{padding:22px}
+.climate{padding:0}
+.climate-hero,.login-art{background-color:#182746;background-image:linear-gradient(90deg,#10182bee 0,#14213a75 58%,#16223a28 100%),url("/clima.webp");background-position:center;background-size:cover}
+.climate-hero{padding:23px 26px 25px;min-height:258px}
+.climate-hero h2{font-size:1.58rem;margin-top:18px}
+.climate-hero p{color:#c8d5ef}
+.reading{display:flex;align-items:flex-start;margin-top:14px;font-size:4.4rem;letter-spacing:-.09em;line-height:.95}
+.reading small{color:#c5d3ff;font-size:1.5rem;letter-spacing:0;margin:.3em .25em}
+.controls{padding:22px 26px}
+.connection-card h2{margin-top:16px}
+.pill{display:inline-flex;gap:7px;align-items:center;padding:6px 11px;border-radius:999px;color:#d6dff2;background:#242d42;white-space:nowrap;font-size:.79rem;font-weight:650}
+#connection::before,#power::before{content:"";width:6px;height:6px;border-radius:50%;background:#abb8d2}
+.pill[data-active="true"]{color:#b2f7d6;background:#163a32}
+#connection[data-active="true"]::before,#power[data-active="true"]::before{background:#71e6b0}
+.muted{font-size:.79rem;color:var(--muted)}
+.actions{flex-wrap:wrap;margin-top:12px}
+.power-actions{margin-top:15px}
+button,input{min-height:44px;font:inherit;border-radius:11px;padding:9px 14px}
+button{cursor:pointer;font-weight:650}
+button:disabled{opacity:.48;cursor:default}
+button:not(:disabled):hover{filter:brightness(1.15)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.primary{background:#a8bdff;color:#121d3a;border:1px solid #a8bdff}
+.quiet{color:#edf2ff;background:#1d273d;border:1px solid #394762}
+input{background:#101624;color:inherit;border:1px solid #465775;width:100%}
+input[type=number]{width:72px;text-align:center;appearance:textfield}
+input::-webkit-inner-spin-button{appearance:none}
+.step{width:44px;padding:0}
+label{display:block;color:#d5def3;margin-top:19px;font-size:.9rem}
+.login{display:grid;grid-template-columns:1.1fr 1fr;max-width:900px;min-height:460px;margin:4vh auto 0}
+.login-art{background-image:linear-gradient(160deg,#0e142b13,#101728a3),url("/clima.webp");background-position:65% center}
+.login-content{padding:42px}
+.login h1{font-size:clamp(2rem,5vw,3.2rem)}
+.login input{margin-top:7px}
+.login button{width:100%;margin-top:24px;display:flex;align-items:center;justify-content:space-between}
+#devices{margin-top:8px}
+#devices h3{color:var(--muted);font-size:.84rem;margin:19px 0 7px}
+#devices ul{list-style:none;margin:0;padding:0}
+#devices li{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+#devices li::before{content:"";width:8px;height:8px;border:2px solid var(--accent);border-radius:3px}
+#command:not(:empty),#pageError:not(:empty),#loginError:not(:empty){padding-top:10px}
+[hidden]{display:none!important}
+@media(max-width:740px){.grid{grid-template-columns:1fr}.bar,main{width:calc(100% - 32px)}.bar{gap:14px}nav{display:none}main{padding-top:28px}.login{grid-template-columns:1fr}.login-art{min-height:155px;background-position:right 32%}.login-content{padding:24px}}
+@media(max-width:390px){.controls,.climate-hero,.card:not(.climate){padding-inline:16px}.title{align-items:flex-start}.title button{padding-inline:8px}.actions{gap:7px}}

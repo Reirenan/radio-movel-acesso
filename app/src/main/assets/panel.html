@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Painel Casa</title>
+<style>
+  body { font: 16px system-ui; background: #edf1ef; color: #162c26; margin: 0; }
+  main { max-width: 46rem; margin: auto; padding: 2rem 1rem; }
+  section { background: white; padding: 1.5rem; border-radius: 1rem; margin: 1rem 0; }
+  button, input { font: inherit; padding: .6rem; border-radius: .5rem; }
+  button { background: #175746; color: white; border: 0; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  input { border: 1px solid #668079; width: 5rem; }
+  form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: 1rem; }
+  li { padding-block: .25rem; }
+</style>
+<main>
+  <h1 id="house">Painel Casa</h1>
+  <button id="refresh">Atualizar</button>
+  <p id="message" role="status"></p>
+  <section>
+    <h2>Ar-condicionado</h2>
+    <p id="air"></p>
+    <button id="on" disabled>Ligar</button>
+    <button id="off" disabled>Desligar</button>
+    <form id="temperatureForm" hidden>
+      <label for="temperature">Temperatura (°C)</label>
+      <input id="temperature" type="number" min="16" max="30" step="1" required>
+      <button>Aplicar</button>
+    </form>
+    <form id="fanForm" hidden>
+      <label for="fan">Ventilador (%)</label>
+      <input id="fan" type="number" min="0" max="100" step="1" required>
+      <button>Aplicar</button>
+    </form>
+  </section>
+  <section>
+    <h2>Ambientes e dispositivos</h2>
+    <div id="rooms"></div>
+  </section>
+</main>
+<style>[hidden] { display: none; }</style>
+<script>
+  const token = location.hash.slice(1);
+  const byId = id => document.getElementById(id);
+  async function request(path, method = 'GET') {
+    if (!token) throw new Error('Abra o link completo mostrado no POCO.');
+    const response = await fetch(path, {method, headers: {Authorization: 'Bearer ' + token}, cache: 'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.erro);
+    return data;
+  }
+  async function refresh() {
+    const data = await request('/api/casa');
+    byId('house').textContent = data.casa;
+    const air = data.ar;
+    byId('air').textContent = air?.ligado === true ? 'Ligado' : air?.ligado === false ? 'Desligado' : 'Estado indisponível';
+    byId('on').disabled = !air?.liga;
+    byId('off').disabled = !air?.desliga;
+    byId('temperatureForm').hidden = air?.temperatura == null;
+    byId('fanForm').hidden = air?.ventilador == null;
+    byId('temperature').value = air?.temperatura ?? '';
+    byId('fan').value = air?.ventilador ?? '';
+    byId('rooms').replaceChildren();
+    const names = new Set([...data.ambientes, ...data.dispositivos.map(device => device.ambiente)]);
+    for (const name of names) {
+      const heading = document.createElement('h3');
+      heading.textContent = name;
+      const list = document.createElement('ul');
+      for (const device of data.dispositivos.filter(device => device.ambiente === name)) {
+        const item = document.createElement('li');
+        item.textContent = device.nome;
+        list.append(item);
+      }
+      byId('rooms').append(heading, list);
+    }
+  }
+  let busy = false;
+  async function run(action, value) {
+    if (busy) return;
+    busy = true;
+    byId('message').textContent = action ? 'Enviando comando…' : 'Carregando…';
+    try {
+      if (action) {
+        const query = new URLSearchParams({acao: action});
+        if (value !== undefined) query.set('valor', value);
+        await request('/api/ar?' + query, 'POST');
+        byId('message').textContent = 'Comando aceito pelo Google Home.';
+      }
+      await refresh();
+      if (!action) byId('message').textContent = '';
+    } catch (error) {
+      byId('message').textContent = error.message;
+    } finally {
+      busy = false;
+    }
+  }
+  byId('refresh').onclick = () => run();
+  byId('on').onclick = () => run('ligar');
+  byId('off').onclick = () => run('desligar');
+  byId('temperatureForm').onsubmit = event => {
+    event.preventDefault();
+    run('temperatura', byId('temperature').value);
+  };
+  byId('fanForm').onsubmit = event => {
+    event.preventDefault();
+    run('ventilador', byId('fan').value);
+  };
+  run();
+</script>
+</html>

@@ -1,0 +1,13 @@
+.gradle/
+**/build/
+.wrangler/
+home-sdk/
+local.properties
+*.hprof
+*.keystore
+*.apk
+.env*
+.dev.vars*
+credenciais.json
+acesso-web.json
+node_modules/
