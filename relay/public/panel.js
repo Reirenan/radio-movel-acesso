@@ -8,6 +8,19 @@ let signedIn = false;
 let pending = false;
 let inventory;
 let revision = 0;
+const labels = { Cool: "Resfriar", Heat: "Aquecer", automatico: "Automático", Off: "Desligado",
+  Dry: "Desumidificar", FanOnly: "Ventilar", auto: "Automática", low: "Baixa", mid: "Média", high: "Alta" };
+
+function renderChoices(form, field, state, options, reported) {
+  const select = el(field);
+  const values = Array.isArray(options) ? options : [];
+  el(form).hidden = values.length === 0;
+  el(state).textContent = reported == null ? "" : "Reportado: " + (labels[reported] || reported);
+  if (JSON.stringify([...select.options].map(option => option.value)) === JSON.stringify(["", ...values])) return;
+  const previous = select.value;
+  select.replaceChildren(new Option("Selecione", ""), ...values.map(value => new Option(labels[value] || value, value)));
+  select.value = values.includes(previous) ? previous : values.includes(reported) ? reported : "";
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, cache: "no-store" });
@@ -34,6 +47,9 @@ function controls() {
     el(id).hidden = inventory?.ar?.[key] == null;
     for (const input of el(id).elements) input.disabled = disabled;
   }
+  for (const id of ["mode", "fanMode"]) {
+    for (const input of el(id).elements) input.disabled = disabled;
+  }
 }
 
 function render(data) {
@@ -49,6 +65,8 @@ function render(data) {
   el("setpoint").textContent = data.ar?.temperatura ?? "—";
   if (!el("degrees").value && data.ar?.temperatura != null) el("degrees").value = data.ar.temperatura;
   if (!el("speed").value && data.ar?.ventilador != null) el("speed").value = data.ar.ventilador;
+  renderChoices("mode", "modeChoice", "modeState", data.ar?.modos, data.ar?.modo);
+  renderChoices("fanMode", "fanChoice", "fanState", data.ar?.velocidades, data.ar?.velocidade);
   const power = data.ar?.ligado;
   el("power").textContent = power === true ? "Reportado ligado" : power === false ? "Reportado desligado" : "Estado indisponível";
   el("power").dataset.active = power === true;
@@ -106,7 +124,14 @@ async function send(action, value) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       if (current !== revision) return;
       const result = await api("/api/comando?id=" + encodeURIComponent(command.id));
-      el("command").textContent = terminal[result.status] || (result.status === "entregue" ? "Entregue ao POCO." : "Aguardando o POCO…");
+      if (result.status === "enviado" && (action === "temperatura" || (action === "ligar" && value !== undefined))) {
+        el("command").textContent = `Temperatura reportada pelo Google Home: ${value} °C.`;
+      } else if (result.status === "verificando") {
+        el("command").textContent = "Aguardando o Google Home reportar a temperatura…";
+      } else {
+        el("command").textContent = result.erro || terminal[result.status] ||
+          (result.status === "entregue" ? "Entregue ao POCO." : "Aguardando o POCO…");
+      }
       if (terminal[result.status]) return;
     }
     if (current === revision) el("command").textContent = "Tempo de confirmação esgotado. Confira o último estado.";
@@ -158,7 +183,10 @@ el("on").onclick = () => {
 el("off").onclick = () => send("desligar");
 el("minus").onclick = () => el("degrees").stepDown();
 el("plus").onclick = () => el("degrees").stepUp();
-for (const [form, field, action] of [["temperature", "degrees", "temperatura"], ["fan", "speed", "ventilador"]]) {
+for (const [form, field, action] of [
+  ["temperature", "degrees", "temperatura"], ["fan", "speed", "ventilador"],
+  ["mode", "modeChoice", "modo"], ["fanMode", "fanChoice", "velocidade"],
+]) {
   el(form).addEventListener("submit", event => {
     event.preventDefault();
     send(action, el(field).value);

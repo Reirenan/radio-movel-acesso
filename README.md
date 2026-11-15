@@ -32,7 +32,11 @@ O backend da plataforma deve usar `Authorization: Bearer <PLATAFORMA_TOKEN>` nas
 | Método | Caminho | Resultado |
 |---|---|---|
 | GET | `/api/casa` | Inventário, último estado recebido, data da atualização e conexão do POCO |
-| POST | `/api/ar?acao=desligar` | Registra o comando e devolve o ID com HTTP 202 |
+| POST | `/api/ar?acao=ligar&valor=23` | Liga o ar e ajusta para 23 °C. O valor é opcional |
+| POST | `/api/ar?acao=desligar` | Desliga o ar |
+| POST | `/api/ar?acao=temperatura&valor=23` | Ajusta a temperatura entre 16 e 30 °C |
+| POST | `/api/ar?acao=modo&valor=Cool` | Seleciona uma opção de `ar.modos` |
+| POST | `/api/ar?acao=velocidade&valor=low` | Seleciona uma opção de `ar.velocidades` |
 | GET | `/api/comando?id=<id>` | Retorna o resultado do comando mais recente |
 
-Os comandos são entregues uma vez. Se a conexão cair durante a entrega, o resultado pode aparecer como `sem_confirmacao`. O estado em `/api/casa` vem do Google Home e pode demorar para refletir a mudança física.
+O POST aceito devolve o ID com HTTP 202. Os comandos são entregues uma vez. Quando o Google Home rejeita ou deixa de confirmar um ajuste, consulte o campo `erro` no resultado do comando. O estado em `/api/casa` vem do Google Home e pode demorar para refletir a mudança física.

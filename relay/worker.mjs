@@ -2,6 +2,9 @@ const reply = (data, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
 const isTemperature = raw => /^\d+$/.test(raw ?? "") && Number(raw) >= 16 && Number(raw) <= 30;
+const needsTemperature = command => command.acao === "temperatura" ||
+  (command.acao === "ligar" && command.valor !== null);
+const inProgress = command => ["pendente", "entregue", "verificando"].includes(command.status);
 
 const encode = new TextEncoder();
 const hex = bytes => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("");
@@ -115,19 +118,28 @@ export class Casa {
     if (route === "POST /api/ar") {
       const action = url.searchParams.get("acao");
       const raw = url.searchParams.get("valor");
-      const value = /^\d+$/.test(raw ?? "") ? Number(raw) : null;
+      const named = action === "modo" || action === "velocidade";
+      const value = named ? raw : /^\d+$/.test(raw ?? "") ? Number(raw) : null;
       const validTemperature = isTemperature(raw);
       const valid = (action === "ligar" && (raw === null || validTemperature)) || action === "desligar" ||
         (action === "temperatura" && validTemperature) ||
-        (action === "ventilador" && value !== null && value <= 100);
+        (action === "ventilador" && value !== null && value <= 100) ||
+        (named && typeof value === "string" && value.length > 0 && value.length <= 80);
       if (!valid) return reply({ erro: "Comando inválido." }, 400);
       const now = Date.now();
       const previous = this.get("comando");
-      if (previous && ["pendente", "entregue"].includes(previous.status) && previous.expiraEm > now) {
+      if (previous && inProgress(previous) && previous.expiraEm > now) {
         return reply({ erro: "Já existe um comando em andamento." }, 409);
       }
       if (now - (this.get("conexao") ?? 0) >= 45000) {
         return reply({ erro: "POCO desconectado." }, 503);
+      }
+      if (named) {
+        const air = this.get("casa")?.data?.ar;
+        const options = action === "modo" ? air?.modos : air?.velocidades;
+        if (!Array.isArray(options) || !options.includes(value)) {
+          return reply({ erro: "Opção indisponível para este ar-condicionado." }, 400);
+        }
       }
       const command = { id: crypto.randomUUID(), acao: action, valor: value, status: "pendente", expiraEm: now + 45000 };
       this.put("comando", command);
@@ -136,8 +148,8 @@ export class Casa {
     if (route === "GET /api/comando") {
       const command = this.get("comando");
       if (command?.id !== url.searchParams.get("id") || !command) return reply({ erro: "Comando não encontrado." }, 404);
-      if (Date.now() >= command.expiraEm && ["pendente", "entregue"].includes(command.status)) {
-        return reply({ ...command, status: command.status === "entregue" ? "sem_confirmacao" : "expirado" });
+      if (Date.now() >= command.expiraEm && inProgress(command)) {
+        return reply({ ...command, status: command.status === "pendente" ? "expirado" : "sem_confirmacao" });
       }
       return reply(command);
     }
@@ -151,13 +163,23 @@ export class Casa {
       if (!input || typeof input !== "object" || Array.isArray(input)) return reply({ erro: "JSON inválido." }, 400);
       const now = Date.now();
       this.put("conexao", now);
-      if (input.casa && typeof input.casa.casa === "string" && Array.isArray(input.casa.dispositivos)) {
+      const hasSnapshot = input.casa && typeof input.casa.casa === "string" && Array.isArray(input.casa.dispositivos);
+      if (hasSnapshot) {
         this.put("casa", { data: input.casa, at: new Date(now).toISOString() });
       }
       const command = this.get("comando");
       const result = input.resultado;
-      if (command?.status === "entregue" && command.id === result?.id && typeof result.enviado === "boolean") {
-        this.put("comando", { ...command, status: result.enviado ? "enviado" : "sem_confirmacao" });
+      const hasResult = command?.status === "entregue" && command.id === result?.id && typeof result.enviado === "boolean";
+      if (command && needsTemperature(command) &&
+          (hasResult || (command.status === "verificando" && now < command.expiraEm))) {
+        const air = hasSnapshot && input.casa.ar;
+        const reached = air?.temperatura === command.valor && (command.acao !== "ligar" || air.ligado === true);
+        const status = reached ? "enviado" : now < command.expiraEm ? "verificando" : "sem_confirmacao";
+        const erro = reached ? undefined : "O Google Home ainda não reportou a temperatura solicitada.";
+        this.put("comando", { ...command, status, erro });
+      } else if (hasResult) {
+        const erro = !result.enviado && typeof result.erro === "string" ? result.erro.slice(0, 240) : undefined;
+        this.put("comando", { ...command, status: result.enviado ? "enviado" : "sem_confirmacao", erro });
       }
       if (command?.status === "pendente" && command.expiraEm > now) {
         this.put("comando", { ...command, status: "entregue" });

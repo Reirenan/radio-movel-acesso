@@ -49,6 +49,8 @@
           <div class="row"><h3>Controles</h3><span class="muted" id="controlHint"></span></div>
           <div class="actions power-actions"><button class="primary" id="on" disabled><span aria-hidden="true">⏻</span> Ligar</button><button class="quiet" id="off" disabled>Desligar</button></div>
           <form id="temperature" hidden><label for="degrees">Ajustar temperatura</label><div class="actions"><button type="button" class="quiet step" id="minus" aria-label="Diminuir temperatura">−</button><input id="degrees" type="number" min="16" max="30" required><button type="button" class="quiet step" id="plus" aria-label="Aumentar temperatura">+</button><button class="quiet apply">Aplicar</button></div></form>
+          <form id="mode" hidden><label for="modeChoice">Modo de operação</label><div class="actions"><select id="modeChoice" required></select><button class="quiet apply">Aplicar</button></div><small id="modeState"></small></form>
+          <form id="fanMode" hidden><label for="fanChoice">Velocidade do ventilador</label><div class="actions"><select id="fanChoice" required></select><button class="quiet apply">Aplicar</button></div><small id="fanState"></small></form>
           <form id="fan" hidden><label for="speed">Ventilador (%)</label><div class="actions"><input id="speed" type="number" min="0" max="100" required><button class="quiet apply">Aplicar</button></div></form>
           <p id="command" role="status"></p>
         </div>
