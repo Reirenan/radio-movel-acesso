@@ -14,6 +14,7 @@ import com.google.home.HomeClient
 import com.google.home.HomeConfig
 import com.google.home.HomeDevice
 import com.google.home.PermissionsResultStatus
+import com.google.home.PermissionsState
 import com.google.home.matter.standard.FanControl
 import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.RoomAirConditionerDevice
@@ -29,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -83,56 +86,69 @@ class MainActivity : ComponentActivity() {
             setTextIsSelectable(true)
             textSize = 17f
         }
+        val connect = Button(this).apply { text = "Conectar painel" }
+        fun connectPanel(interactive: Boolean) {
+            if (!connect.isEnabled) return
+            connect.isEnabled = false
+            status.text = "Verificando acesso ao Google Home…"
+            scope.launch {
+                try {
+                    val address = endpoint.text.toString().trim().trimEnd('/')
+                    val key = relayKey.text.toString().trim()
+                    val remote = if (address.isEmpty() && key.isEmpty()) null else URI(address).also {
+                        require(it.scheme == "https" && it.host != null && it.userInfo == null &&
+                            it.path.isEmpty() && it.query == null && it.fragment == null && key.length >= 32) {
+                            "Informe o endereço HTTPS e o token do POCO."
+                        }
+                    }
+                    val permission = withTimeoutOrNull(10_000) {
+                        home.hasPermissions().first { it != PermissionsState.PERMISSIONS_STATE_UNINITIALIZED }
+                    }
+                    check(permission != null) { "O Google Home demorou a responder. Toque em Conectar painel para tentar novamente." }
+                    if (permission != PermissionsState.GRANTED) {
+                        if (!interactive) {
+                            status.text = "Toque em Conectar painel para conceder acesso ao Google Home."
+                            return@launch
+                        }
+                        val result = home.requestPermissions()
+                        check(result.status == PermissionsResultStatus.SUCCESS) {
+                            "Autorização do Google Home: ${result.status}"
+                        }
+                    }
+                    val ip = wifiAddress()
+                    relay?.cancelAndJoin()
+                    server?.stop()
+                    val token = UUID.randomUUID().toString()
+                    val panel = PanelServer(ip ?: "127.0.0.1", token, home)
+                    if (remote == null) {
+                        require(ip != null) { "Conecte-se ao Wi-Fi." }
+                        panel.start(5000, true)
+                        server = panel
+                        status.text = "Abra no navegador:\nhttp://$ip:8787/#$token\n\nMantenha o Painel Casa aberto."
+                    } else {
+                        prefs.edit().putString("endpoint", address).putString("token", key).apply()
+                        status.text = "Conectando à API HTTPS…"
+                        relay = scope.launch { panel.sync(remote, key) }
+                    }
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    status.text = exception.message ?: "Falha ao abrir o painel."
+                } finally {
+                    connect.isEnabled = true
+                }
+            }
+        }
+        connect.setOnClickListener { connectPanel(interactive = true) }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 72, 36, 36)
             addView(endpoint)
             addView(relayKey)
-            addView(Button(context).apply {
-                text = "Autorizar Google Home e abrir painel"
-                setOnClickListener {
-                    isEnabled = false
-                    scope.launch {
-                        try {
-                            val address = endpoint.text.toString().trim().trimEnd('/')
-                            val key = relayKey.text.toString().trim()
-                            val remote = if (address.isEmpty() && key.isEmpty()) null else URI(address).also {
-                                require(it.scheme == "https" && it.host != null && it.userInfo == null &&
-                                    it.path.isEmpty() && it.query == null && it.fragment == null && key.length >= 32) {
-                                    "Informe o endereço HTTPS e o token do POCO."
-                                }
-                            }
-                            val result = home.requestPermissions()
-                            check(result.status == PermissionsResultStatus.SUCCESS) {
-                                "Autorização do Google Home: ${result.status}"
-                            }
-                            val ip = wifiAddress()
-                            relay?.cancel()
-                            server?.stop()
-                            val token = UUID.randomUUID().toString()
-                            val panel = PanelServer(ip ?: "127.0.0.1", token, home)
-                            if (remote == null) {
-                                require(ip != null) { "Conecte-se ao Wi-Fi." }
-                                panel.start(5000, true)
-                                server = panel
-                                status.text = "Abra no navegador:\nhttp://$ip:8787/#$token\n\nMantenha o Painel Casa aberto."
-                            } else {
-                                prefs.edit().putString("endpoint", address).putString("token", key).apply()
-                                status.text = "Conectando à API HTTPS…"
-                                relay = scope.launch { panel.sync(remote, key) }
-                            }
-                        } catch (exception: CancellationException) {
-                            throw exception
-                        } catch (exception: Exception) {
-                            status.text = exception.message ?: "Falha ao abrir o painel."
-                        } finally {
-                            isEnabled = true
-                        }
-                    }
-                }
-            })
+            addView(connect)
             addView(status)
         })
+        if (endpoint.text.isNotBlank() && relayKey.text.isNotBlank()) connectPanel(interactive = false)
     }
 
     override fun onDestroy() {
@@ -232,7 +248,15 @@ class MainActivity : ComponentActivity() {
                 "ligar" -> {
                     val trait = traits.onOff
                     require(trait?.supports(OnOff.Command.On) == true) { "O aparelho não oferece o comando de ligar." }
+                    val thermostat = traits.thermostat
+                    if (value != null) {
+                        require(value in 16..30) { "Use uma temperatura entre 16 e 30 °C." }
+                        require(thermostat?.occupiedCoolingSetpoint != null) { "A temperatura de resfriamento não está disponível." }
+                    }
                     trait.on()
+                    if (value != null) {
+                        checkNotNull(thermostat).update { setOccupiedCoolingSetpoint((value * 100).toShort()) }
+                    }
                 }
                 "desligar" -> {
                     val trait = traits.onOff

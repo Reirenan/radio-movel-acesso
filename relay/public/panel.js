@@ -1,5 +1,4 @@
 const el = id => document.getElementById(id);
-const actions = { on: "ligar", off: "desligar" };
 const terminal = {
   enviado: "Comando aceito pelo Google Home. Confira o último estado reportado.",
   sem_confirmacao: "Comando sem confirmação. Confira o aparelho.",
@@ -29,6 +28,7 @@ function controls() {
   const disabled = pending || !inventory?.ponteOnline;
   el("controlHint").textContent = pending ? "Comando em andamento" : inventory?.ponteOnline ? "" : "POCO offline";
   el("on").disabled = disabled || !inventory?.ar?.liga;
+  el("on").textContent = inventory?.ar?.temperatura == null ? "Ligar" : "Ligar na temperatura selecionada";
   el("off").disabled = disabled || !inventory?.ar?.desliga;
   for (const [id, key] of [["temperature", "temperatura"], ["fan", "ventilador"]]) {
     el(id).hidden = inventory?.ar?.[key] == null;
@@ -150,7 +150,12 @@ el("logout").onclick = async () => {
   }
 };
 el("refresh").onclick = refresh;
-for (const [id, action] of Object.entries(actions)) el(id).onclick = () => send(action);
+el("on").onclick = () => {
+  if (el("temperature").hidden) return send("ligar");
+  const degrees = el("degrees");
+  if (degrees.reportValidity()) send("ligar", degrees.value);
+};
+el("off").onclick = () => send("desligar");
 el("minus").onclick = () => el("degrees").stepDown();
 el("plus").onclick = () => el("degrees").stepUp();
 for (const [form, field, action] of [["temperature", "degrees", "temperatura"], ["fan", "speed", "ventilador"]]) {

@@ -107,8 +107,9 @@ export class Casa {
       const action = url.searchParams.get("acao");
       const raw = url.searchParams.get("valor");
       const value = /^\d+$/.test(raw ?? "") ? Number(raw) : null;
-      const valid = action === "ligar" || action === "desligar" ||
-        (action === "temperatura" && value >= 16 && value <= 30) ||
+      const validTemperature = value !== null && value >= 16 && value <= 30;
+      const valid = (action === "ligar" && (raw === null || validTemperature)) || action === "desligar" ||
+        (action === "temperatura" && validTemperature) ||
         (action === "ventilador" && value !== null && value <= 100);
       if (!valid) return reply({ erro: "Comando inválido." }, 400);
       const now = Date.now();
