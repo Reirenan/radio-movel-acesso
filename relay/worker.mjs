@@ -1,6 +1,8 @@
 const reply = (data, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
+const isTemperature = raw => /^\d+$/.test(raw ?? "") && Number(raw) >= 16 && Number(raw) <= 30;
+
 const encode = new TextEncoder();
 const hex = bytes => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("");
 const sessionName = "__Host-painel-casa";
@@ -72,6 +74,13 @@ export default {
         return reply({ erro: "Origem inválida." }, 403);
       }
     }
+    if (request.method === "POST" && path === "/api/ar") {
+      const action = url.searchParams.get("acao");
+      const value = url.searchParams.get("valor");
+      if ((action === "temperatura" || (action === "ligar" && value !== null)) && !isTemperature(value)) {
+        return reply({ erro: "Use uma temperatura entre 16 e 30 °C." }, 400);
+      }
+    }
     return env.CASA.getByName("casa").fetch(request);
   },
 };
@@ -107,7 +116,7 @@ export class Casa {
       const action = url.searchParams.get("acao");
       const raw = url.searchParams.get("valor");
       const value = /^\d+$/.test(raw ?? "") ? Number(raw) : null;
-      const validTemperature = value !== null && value >= 16 && value <= 30;
+      const validTemperature = isTemperature(raw);
       const valid = (action === "ligar" && (raw === null || validTemperature)) || action === "desligar" ||
         (action === "temperatura" && validTemperature) ||
         (action === "ventilador" && value !== null && value <= 100);
