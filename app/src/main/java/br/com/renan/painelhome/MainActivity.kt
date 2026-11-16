@@ -19,9 +19,11 @@ import com.google.home.HomeException
 import com.google.home.google.ExtendedFanControl
 import com.google.home.google.ExtendedThermostat
 import com.google.home.google.ExtendedThermostatTrait.ExtendedThermostatMode
+import com.google.home.google.GoogleDeviceTypeRegistry
 import com.google.home.matter.standard.FanControl
 import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.RoomAirConditionerDevice
+import com.google.home.matter.standard.StandardDeviceTypeRegistry
 import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatTrait.SetpointRaiseLowerModeEnum
 import com.google.home.matter.standard.ThermostatTrait.SystemModeEnum
@@ -37,6 +39,9 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -69,7 +74,7 @@ class MainActivity : ComponentActivity() {
                 factoryRegistryProvider = {
                     FactoryRegistry(
                         traits = listOf(OnOff, Thermostat, FanControl, ExtendedThermostat, ExtendedFanControl),
-                        types = listOf(RoomAirConditionerDevice),
+                        types = StandardDeviceTypeRegistry.types + GoogleDeviceTypeRegistry.types,
                     )
                 },
                 homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_1,
@@ -93,9 +98,11 @@ class MainActivity : ComponentActivity() {
             textSize = 17f
         }
         val connect = Button(this).apply { text = "Conectar painel" }
-        fun connectPanel(interactive: Boolean) {
+        val access = Button(this).apply { text = "Gerenciar acesso ao Google Home" }
+        fun connectPanel(interactive: Boolean, manageAccess: Boolean = false) {
             if (!connect.isEnabled) return
             connect.isEnabled = false
+            access.isEnabled = false
             status.text = "Verificando acesso ao Google Home…"
             scope.launch {
                 try {
@@ -111,7 +118,7 @@ class MainActivity : ComponentActivity() {
                         home.hasPermissions().first { it != PermissionsState.PERMISSIONS_STATE_UNINITIALIZED }
                     }
                     check(permission != null) { "O Google Home demorou a responder. Toque em Conectar painel para tentar novamente." }
-                    if (permission != PermissionsState.GRANTED) {
+                    if (manageAccess || permission != PermissionsState.GRANTED) {
                         if (!interactive) {
                             status.text = "Toque em Conectar painel para conceder acesso ao Google Home."
                             return@launch
@@ -142,16 +149,19 @@ class MainActivity : ComponentActivity() {
                     status.text = exception.message ?: "Falha ao abrir o painel."
                 } finally {
                     connect.isEnabled = true
+                    access.isEnabled = true
                 }
             }
         }
         connect.setOnClickListener { connectPanel(interactive = true) }
+        access.setOnClickListener { connectPanel(interactive = true, manageAccess = true) }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 72, 36, 36)
             addView(endpoint)
             addView(relayKey)
             addView(connect)
+            addView(access)
             addView(status)
         })
         if (endpoint.text.isNotBlank() && relayKey.text.isNotBlank()) connectPanel(interactive = false)
@@ -219,27 +229,39 @@ class MainActivity : ComponentActivity() {
                 .apply { addHeader("Cache-Control", "no-store") }
 
         private suspend fun inventory(): JSONObject {
-            val structure = selectedStructure()
-            val rooms = structure.rooms().list().associate { it.id to it.name }
-            val devices = structure.devices().list()
-            val air = devices.singleOrNull { it.name.equals("Ar", ignoreCase = true) }
+            val structures = selectedStructures()
+            val rooms = structures.flatMap { it.rooms().list() }.associate { it.id to it.name }
+            val devices = structures.flatMap { it.devices().list() }.distinctBy { it.id }
+            val entries = devices.sortedBy { it.name }.map { device ->
+                val power = powerTraits(device)
+                val states = power.map { it.onOff }.distinct()
+                JSONObject().put("id", device.id.toString())
+                    .put("nome", device.name)
+                    .put("ambiente", rooms[device.roomId] ?: "Sem ambiente")
+                    .put("ligado", states.singleOrNull() ?: JSONObject.NULL)
+                    .put("liga", power.any { it.supports(OnOff.Command.On) })
+                    .put("desliga", power.any { it.supports(OnOff.Command.Off) })
+                    .put("clima", climate(device) ?: JSONObject.NULL)
+            }
+            val air = entries.singleOrNull { it.getString("nome").equals("Ar", ignoreCase = true) }
             return JSONObject()
-                .put("casa", structure.name)
+                .put("casa", structures.joinToString(" · ") { it.name })
                 .put("ambientes", JSONArray(rooms.values.sorted()))
-                .put("dispositivos", JSONArray(devices.sortedBy { it.name }.map {
-                    JSONObject().put("nome", it.name).put("ambiente", rooms[it.roomId] ?: "Sem ambiente")
-                }))
-                .put("ar", air?.let { climate(it) } ?: JSONObject.NULL)
+                .put("dispositivos", JSONArray(entries))
+                .put("ar", air?.optJSONObject("clima") ?: JSONObject.NULL)
         }
 
-        private suspend fun climate(device: HomeDevice): JSONObject {
-            val type = device.typeOrNull(RoomAirConditionerDevice).first()
-            val traits = type?.standardTraits
-            val onOff = traits?.onOff
-            val thermostat = traits?.thermostat
-            val fan = traits?.fanControl
-            val ext = type?.googleTraits?.extendedThermostat
-            val extFan = type?.googleTraits?.extendedFanControl
+        private suspend fun powerTraits(device: HomeDevice): List<OnOff> =
+            device.types().first().flatMap { it.traits().filterIsInstance<OnOff>() }.distinct()
+
+        private suspend fun climate(device: HomeDevice): JSONObject? {
+            val type = device.typeOrNull(RoomAirConditionerDevice).first() ?: return null
+            val traits = type.standardTraits
+            val onOff = traits.onOff
+            val thermostat = traits.thermostat
+            val fan = traits.fanControl
+            val ext = type.googleTraits.extendedThermostat
+            val extFan = type.googleTraits.extendedFanControl
             val heating = thermostat?.systemMode == SystemModeEnum.Heat
             val target = if (heating) thermostat.occupiedHeatingSetpoint else thermostat?.occupiedCoolingSetpoint
             return JSONObject()
@@ -263,11 +285,11 @@ class MainActivity : ComponentActivity() {
             if (ExtendedThermostatMode.SmarthomeAuto in extended?.extendedSupportedModes.orEmpty()) add("automatico")
         }
 
-        private suspend fun command(action: String?, raw: String?): JSONObject {
+        private suspend fun command(action: String?, raw: String?, deviceId: String? = null): JSONObject {
             val value = raw?.toIntOrNull()
-            val device = selectedStructure().devices().list()
-                .singleOrNull { it.name.equals("Ar", ignoreCase = true) }
-                ?: throw IllegalArgumentException("O dispositivo Ar precisa estar autorizado e ter nome único.")
+            val device = selectedStructures().flatMap { it.devices().list() }.distinctBy { it.id }
+                .singleOrNull { if (deviceId == null) it.name.equals("Ar", ignoreCase = true) else it.id.toString() == deviceId }
+                ?: throw IllegalArgumentException("O ar-condicionado não está disponível no Google Home.")
             val type = device.typeOrNull(RoomAirConditionerDevice).first()
                 ?: throw IllegalArgumentException("O Google Home não disponibilizou controles de ar-condicionado para Ar.")
             val traits = type.standardTraits
@@ -335,11 +357,46 @@ class MainActivity : ComponentActivity() {
                     } catch (exception: HomeException) {
                         throw IllegalStateException("O Google Home rejeitou a mudança de modo.", exception)
                     }
-                    confirm("mudança de modo") { climate(device).optString("modo") == raw }
+                    confirm("mudança de modo") { climate(device)?.optString("modo") == raw }
                 }
                 else -> throw IllegalArgumentException("Comando inválido.")
             }
             return JSONObject().put("enviado", true)
+        }
+
+        private suspend fun power(action: String, ids: JSONArray): JSONObject = coroutineScope {
+            require(action == "ligar" || action == "desligar") { "Comando inválido." }
+            val devices = selectedStructures().flatMap { it.devices().list() }.associateBy { it.id.toString() }
+            val turnOn = action == "ligar"
+            val results = (0 until ids.length()).map { index ->
+                val id = ids.getString(index)
+                async {
+                    val device = devices[id]
+                    val accepted = withTimeoutOrNull(10_000) {
+                        try {
+                            val traits = device?.let { powerTraits(it) }.orEmpty().filter {
+                                if (turnOn) it.supports(OnOff.Command.On) else it.supports(OnOff.Command.Off)
+                            }
+                            val applied = traits.map { trait ->
+                                try {
+                                    if (turnOn) trait.on() else trait.off()
+                                    true
+                                } catch (exception: HomeException) {
+                                    Log.w("PainelCasa", "Falha no comando de energia", exception)
+                                    false
+                                }
+                            }
+                            applied.isNotEmpty() && applied.all { it }
+                        } catch (exception: HomeException) {
+                            Log.w("PainelCasa", "Falha ao ler dispositivo", exception)
+                            false
+                        }
+                    } == true
+                    JSONObject().put("id", id).put("enviado", accepted)
+                }
+            }.awaitAll()
+            JSONObject().put("enviado", results.all { it.getBoolean("enviado") })
+                .put("dispositivos", JSONArray(results))
         }
 
         private suspend fun setTemperature(device: HomeDevice, thermostat: Thermostat, extended: ExtendedThermostat?, value: Int) {
@@ -402,10 +459,10 @@ class MainActivity : ComponentActivity() {
             return matches()
         }
 
-        private suspend fun selectedStructure() = home.structures().first { structures ->
+        private suspend fun selectedStructures() = home.structures().first { structures ->
             Log.i("PainelCasa", "Casas retornadas pelo Google Home: ${structures.size}")
             structures.isNotEmpty()
-        }.single()
+        }
 
         suspend fun sync(remote: URI, key: String) {
             var result: JSONObject? = null
@@ -413,6 +470,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val snapshot = kotlinx.coroutines.withTimeoutOrNull(10_000) { inventory() }
                     val payload = JSONObject().put("casa", snapshot).put("resultado", result)
+                        .put("controlePorDispositivo", true)
                     val response = withContext(Dispatchers.IO) { syncRequest(remote, key, payload) }
                     result = null
                     val queued = response.optJSONObject("comando")
@@ -421,8 +479,12 @@ class MainActivity : ComponentActivity() {
                         val sent = try {
                             kotlinx.coroutines.withTimeoutOrNull(25_000) {
                                 val value = if (queued.isNull("valor")) null else queued.getString("valor")
-                                command(queued.getString("acao"), value)
-                            } != null
+                                val action = queued.getString("acao")
+                                val response = queued.optJSONArray("dispositivos")?.let { power(action, it) }
+                                    ?: command(action, value, queued.optString("dispositivo").takeIf { it.isNotBlank() })
+                                response.optJSONArray("dispositivos")?.let { outcome.put("dispositivos", it) }
+                                response.getBoolean("enviado")
+                            } == true
                         } catch (exception: CancellationException) {
                             throw exception
                         } catch (exception: Exception) {

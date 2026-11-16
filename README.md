@@ -32,6 +32,8 @@ O backend da plataforma deve usar `Authorization: Bearer <PLATAFORMA_TOKEN>` nas
 | Método | Caminho | Resultado |
 |---|---|---|
 | GET | `/api/casa` | Inventário, último estado recebido, data da atualização e conexão do POCO |
+| POST | `/api/dispositivos?acao=ligar` | Liga todos os dispositivos que oferecem esse comando |
+| POST | `/api/dispositivos?acao=desligar&dispositivo=<id>` | Desliga um dispositivo pelo ID retornado no inventário |
 | POST | `/api/ar?acao=ligar&valor=23` | Liga o ar e ajusta para 23 °C. O valor é opcional |
 | POST | `/api/ar?acao=desligar` | Desliga o ar |
 | POST | `/api/ar?acao=temperatura&valor=23` | Ajusta a temperatura entre 16 e 30 °C |
@@ -39,4 +41,4 @@ O backend da plataforma deve usar `Authorization: Bearer <PLATAFORMA_TOKEN>` nas
 | POST | `/api/ar?acao=velocidade&valor=low` | Seleciona uma opção de `ar.velocidades` |
 | GET | `/api/comando?id=<id>` | Retorna o resultado do comando mais recente |
 
-O POST aceito devolve o ID com HTTP 202. Os comandos são entregues uma vez. Quando o Google Home rejeita ou deixa de confirmar um ajuste, consulte o campo `erro` no resultado do comando. O estado em `/api/casa` vem do Google Home e pode demorar para refletir a mudança física.
+O POST aceito devolve o ID com HTTP 202. As rotas de climatização aceitam `dispositivo=<id>` para escolher o aparelho. O resultado de um comando de energia inclui `resultados` por dispositivo. O estado em `/api/casa` vem do Google Home e pode demorar para refletir a mudança física.

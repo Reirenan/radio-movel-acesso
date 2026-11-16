@@ -71,7 +71,7 @@ export default {
     }
     const key = path.startsWith("/api/ponte/") ? env.PONTE_TOKEN : env.PLATAFORMA_TOKEN;
     if (!key || request.headers.get("Authorization") !== "Bearer " + key) {
-      const panelRoute = ["/api/casa", "/api/ar", "/api/comando"].includes(path);
+      const panelRoute = ["/api/casa", "/api/ar", "/api/dispositivos", "/api/comando"].includes(path);
       if (!panelRoute || !await hasSession(request, env)) return reply({ erro: "Acesso não autorizado." }, 401);
       if (request.method === "POST" && request.headers.get("Origin") !== url.origin) {
         return reply({ erro: "Origem inválida." }, 403);
@@ -112,11 +112,14 @@ export class Casa {
       return reply({
         ...state?.data,
         atualizadoEm: state?.at ?? null,
+        controlePorDispositivo: this.get("controlePorDispositivo") === true,
         ponteOnline: !!lastSeen && Date.now() - lastSeen < 45000,
       });
     }
-    if (route === "POST /api/ar") {
+    if (route === "POST /api/ar" || route === "POST /api/dispositivos") {
+      const power = route === "POST /api/dispositivos";
       const action = url.searchParams.get("acao");
+      const deviceId = url.searchParams.get("dispositivo");
       const raw = url.searchParams.get("valor");
       const named = action === "modo" || action === "velocidade";
       const value = named ? raw : /^\d+$/.test(raw ?? "") ? Number(raw) : null;
@@ -126,6 +129,9 @@ export class Casa {
         (action === "ventilador" && value !== null && value <= 100) ||
         (named && typeof value === "string" && value.length > 0 && value.length <= 80);
       if (!valid) return reply({ erro: "Comando inválido." }, 400);
+      if (power && (raw !== null || !["ligar", "desligar"].includes(action))) {
+        return reply({ erro: "Escolha ligar ou desligar." }, 400);
+      }
       const now = Date.now();
       const previous = this.get("comando");
       if (previous && inProgress(previous) && previous.expiraEm > now) {
@@ -134,14 +140,31 @@ export class Casa {
       if (now - (this.get("conexao") ?? 0) >= 45000) {
         return reply({ erro: "POCO desconectado." }, 503);
       }
+      if ((power || deviceId !== null) && this.get("controlePorDispositivo") !== true) {
+        return reply({ erro: "Atualize o Painel Casa no POCO para controlar por dispositivo." }, 409);
+      }
+      const state = this.get("casa")?.data;
+      const devices = state?.dispositivos ?? [];
+      const target = devices.find(device => device.id === deviceId);
+      const air = deviceId === null ? state?.ar : target?.clima;
+      if (!power && deviceId !== null && !air) {
+        return reply({ erro: "Ar-condicionado indisponível." }, 400);
+      }
       if (named) {
-        const air = this.get("casa")?.data?.ar;
         const options = action === "modo" ? air?.modos : air?.velocidades;
         if (!Array.isArray(options) || !options.includes(value)) {
           return reply({ erro: "Opção indisponível para este ar-condicionado." }, 400);
         }
       }
       const command = { id: crypto.randomUUID(), acao: action, valor: value, status: "pendente", expiraEm: now + 45000 };
+      if (power) {
+        const capability = action === "ligar" ? "liga" : "desliga";
+        command.dispositivos = (deviceId === null ? devices : [target])
+          .filter(device => device?.id && device[capability] === true).map(device => device.id);
+        if (!command.dispositivos.length) return reply({ erro: "Nenhum dispositivo aceita esse comando." }, 400);
+      } else if (deviceId !== null) {
+        command.dispositivo = deviceId;
+      }
       this.put("comando", command);
       return reply(command, 202);
     }
@@ -163,6 +186,7 @@ export class Casa {
       if (!input || typeof input !== "object" || Array.isArray(input)) return reply({ erro: "JSON inválido." }, 400);
       const now = Date.now();
       this.put("conexao", now);
+      this.put("controlePorDispositivo", input.controlePorDispositivo === true);
       const hasSnapshot = input.casa && typeof input.casa.casa === "string" && Array.isArray(input.casa.dispositivos);
       if (hasSnapshot) {
         this.put("casa", { data: input.casa, at: new Date(now).toISOString() });
@@ -172,16 +196,26 @@ export class Casa {
       const hasResult = command?.status === "entregue" && command.id === result?.id && typeof result.enviado === "boolean";
       if (command && needsTemperature(command) &&
           (hasResult || (command.status === "verificando" && now < command.expiraEm))) {
-        const air = hasSnapshot && input.casa.ar;
+        const air = hasSnapshot && (command.dispositivo
+          ? input.casa.dispositivos.find(device => device.id === command.dispositivo)?.clima
+          : input.casa.ar);
         const reached = air?.temperatura === command.valor && (command.acao !== "ligar" || air.ligado === true);
         const status = reached ? "enviado" : now < command.expiraEm ? "verificando" : "sem_confirmacao";
         const erro = reached ? undefined : "O Google Home ainda não reportou a temperatura solicitada.";
         this.put("comando", { ...command, status, erro });
       } else if (hasResult) {
         const erro = !result.enviado && typeof result.erro === "string" ? result.erro.slice(0, 240) : undefined;
-        this.put("comando", { ...command, status: result.enviado ? "enviado" : "sem_confirmacao", erro });
+        const resultados = command.dispositivos?.map(id => ({
+          id, enviado: Array.isArray(result.dispositivos) && result.dispositivos.some(device => device?.id === id && device.enviado === true),
+        }));
+        const sent = resultados ? resultados.every(device => device.enviado) : result.enviado;
+        this.put("comando", { ...command, status: sent ? "enviado" : "sem_confirmacao", erro, resultados });
       }
       if (command?.status === "pendente" && command.expiraEm > now) {
+        if ((command.dispositivos || command.dispositivo) && input.controlePorDispositivo !== true) {
+          this.put("comando", { ...command, status: "sem_confirmacao", erro: "Atualize o Painel Casa no POCO." });
+          return reply({ comando: null });
+        }
         this.put("comando", { ...command, status: "entregue" });
         return reply({ comando: command });
       }

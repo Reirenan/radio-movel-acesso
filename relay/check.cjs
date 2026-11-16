@@ -45,5 +45,39 @@ const assert = require('node:assert/strict');
   const confirmed = await temperatureStatus();
   assert.equal(confirmed.status, 'enviado');
   assert.equal(confirmed.erro, undefined);
+  const sync = body => call('/api/ponte/sincronizar', ponte, { controlePorDispositivo: true, ...body });
+  const groupPath = '/api/dispositivos?acao=desligar';
+  assert.equal((await call(groupPath, plataforma, null, 'POST')).status, 409);
+  casa.dispositivos = [
+    { id: 'ar', nome: 'Ar', desliga: true, clima: { temperatura: 16 } },
+    { id: 'leo', nome: 'Ar leonardo', desliga: true, clima: { temperatura: 22 } },
+    { id: 'sensor', nome: 'Sensor' },
+  ];
+  await sync({ casa });
+  const group = await call(groupPath, plataforma, null, 'POST');
+  assert.equal(group.status, 202);
+  const groupJob = await group.json();
+  assert.deepEqual(groupJob.dispositivos, ['ar', 'leo']);
+  assert.equal((await (await sync({})).json()).comando.id, groupJob.id);
+  await sync({ resultado: { id: groupJob.id, enviado: false, dispositivos: [
+    { id: 'ar', enviado: true }, { id: 'leo', enviado: false },
+  ] } });
+  const groupResult = await (await call('/api/comando?id=' + groupJob.id, plataforma)).json();
+  assert.equal(groupResult.status, 'sem_confirmacao');
+  assert.deepEqual(groupResult.resultados, [{ id: 'ar', enviado: true }, { id: 'leo', enviado: false }]);
+  const individual = await call(groupPath + '&dispositivo=leo', plataforma, null, 'POST');
+  assert.equal(individual.status, 202);
+  assert.deepEqual((await individual.json()).dispositivos, ['leo']);
+  assert.equal((await (await call('/api/ponte/sincronizar', ponte, {})).json()).comando, null);
+  await sync({ casa });
+  const leo = await call('/api/ar?acao=temperatura&valor=16&dispositivo=leo', plataforma, null, 'POST');
+  assert.equal(leo.status, 202);
+  const leoJob = await leo.json();
+  assert.equal((await (await sync({})).json()).comando.dispositivo, 'leo');
+  await sync({ casa, resultado: { id: leoJob.id, enviado: true } });
+  assert.equal((await (await call('/api/comando?id=' + leoJob.id, plataforma)).json()).status, 'verificando');
+  casa.dispositivos[1].clima.temperatura = 16;
+  await sync({ casa });
+  assert.equal((await (await call('/api/comando?id=' + leoJob.id, plataforma)).json()).status, 'enviado');
   console.log('Autenticação, estado, entrega única, opções e erros OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

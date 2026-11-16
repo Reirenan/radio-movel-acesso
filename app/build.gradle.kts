@@ -9,6 +9,8 @@ android {
         applicationId = "br.com.renan.painelhome"
         minSdk = 29
         targetSdk = 35
+        versionCode = 2
+        versionName = "1.1"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
