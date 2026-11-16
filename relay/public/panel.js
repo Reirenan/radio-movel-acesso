@@ -217,7 +217,7 @@ function renderAudit() {
       cell(event.valor == null ? action : `${action} · ${auditValue(field, event.valor)}`, event.origem === "web" ? "Site" : "API");
       const perDevice = event.resultados?.map(result => {
         const target = event.alvos?.find(item => item.id === result.id);
-        return `${target?.nome ?? "Dispositivo"} (${result.enviado ? "aceito" : "sem confirmação"})`;
+        return `${target?.nome ?? "Dispositivo"} (${result.enviado ? "aceito" : result.erro || "sem confirmação"})`;
       });
       const status = event.status === "enviado" && event.acao !== "temperatura"
         && !(event.acao === "ligar" && event.valor != null) ? "Aceito pelo Google Home" : auditStatuses[event.status];
@@ -256,8 +256,10 @@ async function send(action, value, deviceId = selectedAir?.id, power = false) {
       const result = await api("/api/comando?id=" + encodeURIComponent(command.id));
       if (Array.isArray(result.resultados)) {
         const accepted = result.resultados.filter(device => device.enviado).length;
-        const failed = result.resultados.filter(device => !device.enviado)
-          .map(device => inventory?.dispositivos?.find(item => item.id === device.id)?.nome ?? "Dispositivo");
+        const failed = result.resultados.filter(device => !device.enviado).map(device => {
+          const name = inventory?.dispositivos?.find(item => item.id === device.id)?.nome ?? "Dispositivo";
+          return device.erro ? `${name} (${device.erro})` : name;
+        });
         message.textContent = `Google Home aceitou ${accepted} de ${result.resultados.length}.` +
           (failed.length ? ` Sem confirmação para ${failed.join(", ")}.` : "");
       } else if (result.status === "enviado" && (action === "temperatura" || (action === "ligar" && value !== undefined))) {

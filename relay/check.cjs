@@ -60,11 +60,13 @@ const assert = require('node:assert/strict');
   assert.deepEqual(groupJob.dispositivos, ['ar', 'leo']);
   assert.equal((await (await sync({})).json()).comando.id, groupJob.id);
   await sync({ resultado: { id: groupJob.id, enviado: false, dispositivos: [
-    { id: 'ar', enviado: true }, { id: 'leo', enviado: false },
+    { id: 'ar', enviado: true }, { id: 'leo', enviado: false, erro: 'O Google Home demorou a responder.' },
   ] } });
   const groupResult = await (await call('/api/comando?id=' + groupJob.id, plataforma)).json();
   assert.equal(groupResult.status, 'sem_confirmacao');
-  assert.deepEqual(groupResult.resultados, [{ id: 'ar', enviado: true }, { id: 'leo', enviado: false }]);
+  assert.deepEqual(groupResult.resultados, [
+    { id: 'ar', enviado: true }, { id: 'leo', enviado: false, erro: 'O Google Home demorou a responder.' },
+  ]);
   const individual = await call(groupPath + '&dispositivo=leo', plataforma, null, 'POST');
   assert.equal(individual.status, 202);
   assert.deepEqual((await individual.json()).dispositivos, ['leo']);

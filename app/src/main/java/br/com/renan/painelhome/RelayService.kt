@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.os.PowerManager
 import android.util.Log
 import com.google.home.HomeException
 import com.google.home.PermissionsState
@@ -79,7 +80,14 @@ class RelayService : Service() {
                 return@launch
             }
             status.value = "Conectando à API HTTPS…"
-            MainActivity.PanelServer("127.0.0.1", "", home).sync(URI(address), key) { status.value = it }
+            val power = getSystemService(PowerManager::class.java)
+            val wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PainelCasa:Conexao")
+            wakeLock.acquire()
+            try {
+                MainActivity.PanelServer("127.0.0.1", "", home).sync(URI(address), key) { status.value = it }
+            } finally {
+                wakeLock.release()
+            }
         }
         return START_STICKY
     }

@@ -368,31 +368,40 @@ class MainActivity : ComponentActivity() {
                 val id = ids.getString(index)
                 async {
                     val device = devices[id]
-                    val accepted = withTimeoutOrNull(10_000) {
+                    val error = withTimeoutOrNull(18_000) {
                         try {
-                            val traits = device?.let { powerTraits(it) }.orEmpty().filter {
+                            if (device == null) return@withTimeoutOrNull "Dispositivo indisponível no Google Home."
+                            val air = device.typeOrNull(RoomAirConditionerDevice).first()?.standardTraits?.onOff
+                            val traits = (air?.let { listOf(it) } ?: powerTraits(device)).filter {
                                 if (turnOn) it.supports(OnOff.Command.On) else it.supports(OnOff.Command.Off)
                             }
+                            if (traits.isEmpty()) return@withTimeoutOrNull "Comando indisponível para o aparelho."
                             val applied = traits.map { trait ->
                                 try {
                                     if (turnOn) trait.on() else trait.off()
-                                    true
+                                    ""
                                 } catch (exception: HomeException) {
                                     Log.w("PainelCasa", "Falha no comando de energia", exception)
-                                    false
+                                    powerError(exception)
                                 }
                             }
-                            applied.isNotEmpty() && applied.all { it }
+                            applied.filter { it.isNotEmpty() }.distinct().joinToString(" ")
                         } catch (exception: HomeException) {
                             Log.w("PainelCasa", "Falha ao ler dispositivo", exception)
-                            false
+                            powerError(exception)
                         }
-                    } == true
-                    JSONObject().put("id", id).put("enviado", accepted)
+                    } ?: "O Google Home demorou a responder."
+                    JSONObject().put("id", id).put("enviado", error.isEmpty())
+                        .apply { if (error.isNotEmpty()) put("erro", error) }
                 }
             }.awaitAll()
             JSONObject().put("enviado", results.all { it.getBoolean("enviado") })
                 .put("dispositivos", JSONArray(results))
+        }
+
+        private fun powerError(exception: HomeException): String {
+            val codes = (listOf(exception.error.code) + exception.getSubErrorCodes()).distinct().joinToString(", ")
+            return "O Google Home retornou erro ($codes)."
         }
 
         private suspend fun setTemperature(device: HomeDevice, thermostat: Thermostat, extended: ExtendedThermostat?, value: Int) {

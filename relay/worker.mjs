@@ -189,11 +189,11 @@ export class Casa {
         return deny("Escolha ligar ou desligar.", 400);
       }
       const previous = this.get("comando");
-      if (previous && inProgress(previous) && previous.expiraEm > now) {
-        return deny("Já existe um comando em andamento.", 409);
-      }
       if (now - (this.get("conexao") ?? 0) >= 45000) {
         return deny("POCO desconectado.", 503);
+      }
+      if (previous && inProgress(previous) && previous.expiraEm > now) {
+        return deny("Já existe um comando em andamento.", 409);
       }
       if ((power || deviceId !== null) && this.get("controlePorDispositivo") !== true) {
         return deny("Atualize o Painel Casa no POCO para controlar por dispositivo.", 409);
@@ -267,9 +267,13 @@ export class Casa {
         this.saveCommand({ ...command, status, erro }, now);
       } else if (hasResult) {
         const erro = !result.enviado && typeof result.erro === "string" ? result.erro.slice(0, 240) : undefined;
-        const resultados = command.dispositivos?.map(id => ({
-          id, enviado: Array.isArray(result.dispositivos) && result.dispositivos.some(device => device?.id === id && device.enviado === true),
-        }));
+        const outcomes = Array.isArray(result.dispositivos) ? result.dispositivos : [];
+        const resultados = command.dispositivos?.map(id => {
+          const outcome = outcomes.find(device => device?.id === id);
+          const enviado = outcome?.enviado === true;
+          const erro = !enviado && typeof outcome?.erro === "string" ? outcome.erro.slice(0, 240) : undefined;
+          return { id, enviado, erro };
+        });
         const sent = resultados ? resultados.every(device => device.enviado) : result.enviado;
         this.saveCommand({ ...command, status: sent ? "enviado" : "sem_confirmacao", erro, resultados }, now);
       }
