@@ -2,7 +2,7 @@
 
 App Android que hospeda um painel na rede Wi-Fi local e consulta as Home APIs do Google. O painel lista os ambientes e os dispositivos autorizados e oferece os controles disponíveis para o ar-condicionado chamado **Ar**.
 
-O painel web está no [Painel Casa](https://painel-casa.renan-painel-casa.workers.dev/). Ele usa a API por HTTPS, mostra a conexão do POCO, separa o estado reportado do resultado dos comandos e agrupa os dispositivos por cômodo.
+O [Painel Casa](https://painel-casa.renan-painel-casa.workers.dev/) usa a API HTTPS. Na lista de dispositivos, abra os controles de cada ar-condicionado para ajustar temperatura, modo e ventilação conforme as opções que o Google Home disponibiliza.
 
 ## Painel web
 
@@ -23,7 +23,7 @@ Abra **Painel Casa** no POCO, autorize a casa no Google e use o endereço comple
 
 ## API HTTPS
 
-Publique o Worker em `relay/` com Wrangler e configure dois segredos independentes, `PONTE_TOKEN` para o POCO e `PLATAFORMA_TOKEN` para o backend da plataforma. No app Android, informe a origem HTTPS do Worker e o token do POCO. Toque em **Autorizar Google Home e abrir painel** e mantenha o app aberto. Os campos são salvos no celular.
+Publique o Worker em `relay/` com Wrangler e configure dois segredos independentes, `PONTE_TOKEN` para o POCO e `PLATAFORMA_TOKEN` para o backend da plataforma. No app Android, informe a origem HTTPS do Worker e o token do POCO e toque em **Conectar painel**. Depois da autorização inicial, o app volta a conectar ao ser aberto e mantém a conexão HTTPS em segundo plano.
 
 No diretório `relay/`, use `npx wrangler login` e `npx wrangler deploy`. Cadastre cada segredo com `npx wrangler secret put PONTE_TOKEN` e `npx wrangler secret put PLATAFORMA_TOKEN`. Use valores aleatórios independentes de pelo menos 32 caracteres. A publicação mostra o endereço fixo `workers.dev`. A rota pública `GET /health` permite verificar a publicação.
 

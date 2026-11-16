@@ -1,8 +1,9 @@
 package br.com.renan.painelhome
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -36,14 +37,13 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -57,18 +57,8 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity() {
     companion object {
         private var client: HomeClient? = null
-    }
-
-    private val scope = MainScope()
-    private var server: PanelServer? = null
-    private var relay: Job? = null
-    private lateinit var status: TextView
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val home = client ?: Home.getClient(
-            applicationContext,
+        internal fun homeClient(context: Context): HomeClient = client ?: Home.getClient(
+            context.applicationContext,
             HomeConfig(
                 coroutineContext = Dispatchers.IO,
                 factoryRegistryProvider = {
@@ -80,6 +70,15 @@ class MainActivity : ComponentActivity() {
                 homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_1,
             ),
         ).also { client = it }
+    }
+
+    private val scope = MainScope()
+    private var server: PanelServer? = null
+    private lateinit var status: TextView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val home = homeClient(this)
         home.registerActivityResultCallerForPermissions(this)
         val prefs = getSharedPreferences("relay", MODE_PRIVATE)
         val endpoint = EditText(this).apply {
@@ -98,11 +97,9 @@ class MainActivity : ComponentActivity() {
             textSize = 17f
         }
         val connect = Button(this).apply { text = "Conectar painel" }
-        val access = Button(this).apply { text = "Gerenciar acesso ao Google Home" }
-        fun connectPanel(interactive: Boolean, manageAccess: Boolean = false) {
+        fun connectPanel(interactive: Boolean) {
             if (!connect.isEnabled) return
             connect.isEnabled = false
-            access.isEnabled = false
             status.text = "Verificando acesso ao Google Home…"
             scope.launch {
                 try {
@@ -114,34 +111,33 @@ class MainActivity : ComponentActivity() {
                             "Informe o endereço HTTPS e o token do POCO."
                         }
                     }
-                    val permission = withTimeoutOrNull(10_000) {
-                        home.hasPermissions().first { it != PermissionsState.PERMISSIONS_STATE_UNINITIALIZED }
-                    }
-                    check(permission != null) { "O Google Home demorou a responder. Toque em Conectar painel para tentar novamente." }
-                    if (manageAccess || permission != PermissionsState.GRANTED) {
-                        if (!interactive) {
-                            status.text = "Toque em Conectar painel para conceder acesso ao Google Home."
-                            return@launch
+                    if (interactive || remote == null) {
+                        val permission = withTimeoutOrNull(10_000) {
+                            home.hasPermissions().first { it != PermissionsState.PERMISSIONS_STATE_UNINITIALIZED }
                         }
-                        val result = home.requestPermissions()
-                        check(result.status == PermissionsResultStatus.SUCCESS) {
-                            "Autorização do Google Home: ${result.status}"
+                        check(permission != null) { "O Google Home demorou a responder. Toque em Conectar painel para tentar novamente." }
+                        if (permission != PermissionsState.GRANTED) {
+                            val result = home.requestPermissions()
+                            check(result.status == PermissionsResultStatus.SUCCESS) {
+                                "Autorização do Google Home: ${result.status}"
+                            }
                         }
                     }
-                    val ip = wifiAddress()
-                    relay?.cancelAndJoin()
                     server?.stop()
-                    val token = UUID.randomUUID().toString()
-                    val panel = PanelServer(ip ?: "127.0.0.1", token, home)
                     if (remote == null) {
+                        val ip = wifiAddress()
                         require(ip != null) { "Conecte-se ao Wi-Fi." }
+                        prefs.edit().remove("endpoint").remove("token").apply()
+                        stopService(Intent(this@MainActivity, RelayService::class.java))
+                        val token = UUID.randomUUID().toString()
+                        val panel = PanelServer(ip, token, home, assets.open("panel.html").bufferedReader().use { it.readText() })
                         panel.start(5000, true)
                         server = panel
                         status.text = "Abra no navegador:\nhttp://$ip:8787/#$token\n\nMantenha o Painel Casa aberto."
                     } else {
                         prefs.edit().putString("endpoint", address).putString("token", key).apply()
-                        status.text = "Conectando à API HTTPS…"
-                        relay = scope.launch { panel.sync(remote, key) }
+                        status.text = RelayService.status.value ?: "Conectando à API HTTPS…"
+                        startForegroundService(Intent(this@MainActivity, RelayService::class.java))
                     }
                 } catch (exception: CancellationException) {
                     throw exception
@@ -149,21 +145,21 @@ class MainActivity : ComponentActivity() {
                     status.text = exception.message ?: "Falha ao abrir o painel."
                 } finally {
                     connect.isEnabled = true
-                    access.isEnabled = true
                 }
             }
         }
         connect.setOnClickListener { connectPanel(interactive = true) }
-        access.setOnClickListener { connectPanel(interactive = true, manageAccess = true) }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 72, 36, 36)
             addView(endpoint)
             addView(relayKey)
             addView(connect)
-            addView(access)
             addView(status)
         })
+        scope.launch {
+            RelayService.status.collect { message -> if (message != null) status.text = message }
+        }
         if (endpoint.text.isNotBlank() && relayKey.text.isNotBlank()) connectPanel(interactive = false)
     }
 
@@ -179,13 +175,13 @@ class MainActivity : ComponentActivity() {
         .filterIsInstance<Inet4Address>()
         .firstOrNull { !it.isLoopbackAddress }?.hostAddress
 
-    private inner class PanelServer(
+    internal class PanelServer(
         ip: String,
         private val token: String,
         private val home: HomeClient,
+        private val page: String = "",
     ) : NanoHTTPD(ip, 8787) {
         private val lock = Mutex()
-        private val page = assets.open("panel.html").bufferedReader().use { it.readText() }
 
         override fun serve(session: IHTTPSession): Response {
             if (session.method == Method.GET && session.uri == "/") {
@@ -464,7 +460,7 @@ class MainActivity : ComponentActivity() {
             structures.isNotEmpty()
         }
 
-        suspend fun sync(remote: URI, key: String) {
+        suspend fun sync(remote: URI, key: String, showStatus: (String) -> Unit) {
             var result: JSONObject? = null
             while (true) {
                 try {
@@ -496,14 +492,15 @@ class MainActivity : ComponentActivity() {
                         }
                         result = outcome.put("enviado", sent)
                     }
-                    status.text = if (snapshot == null) "API conectada. Aguardando dados do Google Home."
-                        else "API conectada. Mantenha o Painel Casa aberto."
+                    showStatus(if (snapshot == null) "API conectada. Aguardando dados do Google Home."
+                        else "Painel conectado em segundo plano.")
                 } catch (exception: CancellationException) {
                     throw exception
                 } catch (exception: Exception) {
-                    status.text = "Falha ao sincronizar. Tentando novamente…"
+                    showStatus("Falha ao sincronizar. Tentando novamente…")
                     Log.w("PainelCasa", "Falha na sincronização", exception)
                     delay(10_000)
+                    continue
                 }
                 if (result == null) delay(10_000)
             }

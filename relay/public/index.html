@@ -38,7 +38,7 @@
       <button class="quiet" id="refresh"><span aria-hidden="true">↻</span> Atualizar</button>
     </div>
     <div class="grid">
-      <section class="card climate" aria-labelledby="device">
+      <section id="climateSection" class="card climate" aria-labelledby="device" tabindex="-1">
         <div class="climate-hero">
           <div class="row"><span class="weather" aria-hidden="true">❄</span><span id="power" class="pill">Estado indisponível</span></div>
           <h2 id="device">Ar-condicionado</h2><p id="room"></p>
@@ -47,7 +47,7 @@
         </div>
         <div class="controls">
           <div class="row"><h3>Controles</h3><span class="muted" id="controlHint"></span></div>
-          <label id="airPicker" hidden>Ar-condicionado <select id="airChoice"></select></label>
+          <label id="airPicker" hidden>Qual ar-condicionado você quer controlar? <select id="airChoice"></select></label>
           <div class="actions power-actions"><button class="primary" id="on" disabled><span aria-hidden="true">⏻</span> Ligar</button><button class="quiet" id="off" disabled>Desligar</button></div>
           <form id="temperature" hidden><label for="degrees">Ajustar temperatura</label><div class="actions"><button type="button" class="quiet step" id="minus" aria-label="Diminuir temperatura">−</button><input id="degrees" type="number" min="16" max="30" required><button type="button" class="quiet step" id="plus" aria-label="Aumentar temperatura">+</button><button class="quiet apply">Aplicar</button></div></form>
           <form id="mode" hidden><label for="modeChoice">Modo de operação</label><div class="actions"><select id="modeChoice" required></select><button class="quiet apply">Aplicar</button></div><small id="modeState"></small></form>

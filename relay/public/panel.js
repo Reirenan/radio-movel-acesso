@@ -51,6 +51,7 @@ function controls() {
     el(id).disabled = disabled || !devices.some(device => device.id && device[capability]);
   }
   for (const button of el("devices").querySelectorAll("button[data-power]")) button.disabled = disabled;
+  for (const button of el("devices").querySelectorAll("button[data-climate]")) button.disabled = pending;
   for (const [id, key] of [["temperature", "temperatura"], ["fan", "ventilador"]]) {
     el(id).hidden = air?.[key] == null;
     for (const input of el(id).elements) input.disabled = disabled;
@@ -103,7 +104,7 @@ function render(data) {
   renderClimate();
   el("connection").textContent = data.ponteOnline ? "Online" : "Offline";
   el("connection").dataset.active = !!data.ponteOnline;
-  el("connectionHint").textContent = data.ponteOnline ? "Recebendo dados do Painel Casa." : "Abra o Painel Casa no POCO e conecte-o à internet.";
+  el("connectionHint").textContent = data.ponteOnline ? "Recebendo dados do Painel Casa." : "Confira a internet e a conexão do app no POCO.";
   el("count").textContent = devices.length;
   el("devices").replaceChildren();
   for (const name of new Set([...rooms, ...devices.map(device => device.ambiente)])) {
@@ -116,6 +117,20 @@ function render(data) {
       if (typeof device.ligado === "boolean") item.append(device.ligado ? " · Ligado" : " · Desligado");
       const actions = document.createElement("div");
       actions.className = "actions";
+      if (data.controlePorDispositivo && device.id && device.clima) {
+        const details = document.createElement("button");
+        details.className = "quiet";
+        details.dataset.climate = "";
+        details.textContent = "Temperatura e modo";
+        details.setAttribute("aria-label", "Temperatura e modo de " + device.nome);
+        details.onclick = () => {
+          el("airChoice").value = device.id;
+          el("airChoice").onchange();
+          el("climateSection").scrollIntoView({ block: "start" });
+          el(el("airPicker").hidden ? "climateSection" : "airChoice").focus({ preventScroll: true });
+        };
+        actions.append(details);
+      }
       for (const [action, capability, label] of [["ligar", "liga", "Ligar"], ["desligar", "desliga", "Desligar"]]) {
         if (!data.controlePorDispositivo || !device.id || !device[capability]) continue;
         const button = document.createElement("button");
