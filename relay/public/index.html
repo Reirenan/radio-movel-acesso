@@ -12,7 +12,7 @@
 <header class="top">
   <div class="bar">
     <a class="brand" href="/" aria-label="Painel Casa"><span class="mark" aria-hidden="true">⌂</span><span>Painel<span class="accent"> Casa</span></span></a>
-    <nav id="navigation" hidden aria-label="Navegação"><a href="#dashboard">Visão geral</a><a href="#devicesSection">Dispositivos</a></nav>
+    <nav id="navigation" hidden aria-label="Navegação"><a href="#dashboard">Visão geral</a><a href="#devicesSection">Dispositivos</a><a href="#auditSection">Auditoria</a></nav>
     <button id="logout" class="quiet" hidden>Sair <span aria-hidden="true">↗</span></button>
   </div>
 </header>
@@ -69,6 +69,23 @@
         </section>
       </div>
     </div>
+    <section class="card" id="auditSection" aria-labelledby="auditTitle">
+      <div class="row">
+        <h2 id="auditTitle">Auditoria</h2>
+        <select id="auditFilter" aria-label="Tipo de evento">
+          <option value="">Todos os eventos</option>
+          <option value="comando">Comandos</option>
+          <option value="estado">Mudanças de estado</option>
+        </select>
+      </div>
+      <p id="auditMessage" role="status"></p>
+      <div class="audit-scroll">
+        <table id="auditTable" hidden>
+          <thead><tr><th scope="col">Data e hora</th><th scope="col">Dispositivo</th><th scope="col">Evento</th><th scope="col">Resultado</th></tr></thead>
+          <tbody id="auditRows"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
   <p id="pageError" role="status"></p>
 </main>

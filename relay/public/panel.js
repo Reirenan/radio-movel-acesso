@@ -9,6 +9,12 @@ let pending = false;
 let inventory;
 let revision = 0;
 let selectedAir;
+let auditEvents = [];
+const auditActions = { ligar: "Ligar", desligar: "Desligar", temperatura: "Ajustar temperatura",
+  modo: "Alterar modo", velocidade: "Alterar velocidade", ventilador: "Ajustar ventilação" };
+const auditStatuses = { pendente: "Na fila", entregue: "Entregue ao POCO", verificando: "Aguardando confirmação",
+  enviado: "Confirmado pelo Google Home", sem_confirmacao: "Sem confirmação", expirado: "Expirado", recusado: "Recusado" };
+const auditFields = { ligado: "Energia", temperatura: "Temperatura", modo: "Modo", velocidade: "Velocidade" };
 const labels = { Cool: "Resfriar", Heat: "Aquecer", automatico: "Automático", Off: "Desligado",
   Dry: "Desumidificar", FanOnly: "Ventilar", auto: "Automática", low: "Baixa", mid: "Média", high: "Alta" };
 
@@ -158,6 +164,7 @@ async function refresh() {
     render(data);
     showPanel(true);
     el("pageError").textContent = "";
+    void refreshAudit(current);
   } catch (error) {
     if (revision !== current) return;
     if (error.status === 401) showPanel(false);
@@ -167,6 +174,67 @@ async function refresh() {
       controls();
       el("pageError").textContent = error.message;
     }
+  }
+}
+
+function auditValue(field, value) {
+  if (value == null) return "Indisponível";
+  if (field === "ligado") return value ? "Ligado" : "Desligado";
+  if (field === "temperatura") return value + " °C";
+  if (field === "ventilador" || (field === "velocidade" && typeof value === "number")) return value + "%";
+  return Object.hasOwn(labels, value) ? labels[value] : value;
+}
+
+function renderAudit() {
+  const kind = el("auditFilter").value;
+  const events = auditEvents.filter(event => !kind || event.tipo === kind);
+  el("auditTable").hidden = !events.length;
+  el("auditMessage").textContent = events.length ? "" : "Nenhum evento registrado neste filtro.";
+  el("auditRows").replaceChildren(...events.map(event => {
+    const row = document.createElement("tr");
+    const cell = (content, detail) => {
+      const node = row.insertCell();
+      node.textContent = content;
+      if (detail) {
+        const small = document.createElement("small");
+        small.textContent = detail;
+        node.append(small);
+      }
+    };
+    cell(new Date(event.em).toLocaleString("pt-BR"));
+    cell(event.alvo, event.ambiente);
+    if (event.tipo === "estado") {
+      cell("Mudança de estado", "Reportada pelo Google Home");
+      for (const [index, change] of event.mudancas.entries()) {
+        const output = index === 0 ? row.insertCell() : row.cells[3];
+        const line = document.createElement("div");
+        line.textContent = `${auditFields[change.campo]}: ${auditValue(change.campo, change.antes)} → ${auditValue(change.campo, change.depois)}`;
+        output.append(line);
+      }
+    } else {
+      const action = Object.hasOwn(auditActions, event.acao) ? auditActions[event.acao] : "Comando inválido";
+      const field = event.acao === "ligar" ? "temperatura" : event.acao;
+      cell(event.valor == null ? action : `${action} · ${auditValue(field, event.valor)}`, event.origem === "web" ? "Site" : "API");
+      const perDevice = event.resultados?.map(result => {
+        const target = event.alvos?.find(item => item.id === result.id);
+        return `${target?.nome ?? "Dispositivo"} (${result.enviado ? "aceito" : "sem confirmação"})`;
+      });
+      const status = event.status === "enviado" && event.acao !== "temperatura"
+        && !(event.acao === "ligar" && event.valor != null) ? "Aceito pelo Google Home" : auditStatuses[event.status];
+      cell(status, [event.erro, perDevice?.join(", ")].filter(Boolean).join(" · "));
+    }
+    return row;
+  }));
+}
+
+async function refreshAudit(current) {
+  try {
+    const data = await api("/api/auditoria");
+    if (current !== revision || !signedIn) return;
+    auditEvents = data.eventos;
+    renderAudit();
+  } catch {
+    if (current === revision && signedIn) el("auditMessage").textContent = "Falha ao atualizar a auditoria.";
   }
 }
 
@@ -236,6 +304,8 @@ el("logout").onclick = async () => {
     await api("/sair", { method: "POST" });
     revision++;
     inventory = null;
+    auditEvents = [];
+    renderAudit();
     el("command").textContent = "";
     showPanel(false);
   } catch (error) {
@@ -243,6 +313,7 @@ el("logout").onclick = async () => {
   }
 };
 el("refresh").onclick = refresh;
+el("auditFilter").onchange = renderAudit;
 el("on").onclick = () => {
   if (el("temperature").hidden) return send("ligar");
   const degrees = el("degrees");

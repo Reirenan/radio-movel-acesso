@@ -32,6 +32,7 @@ O backend da plataforma deve usar `Authorization: Bearer <PLATAFORMA_TOKEN>` nas
 | Método | Caminho | Resultado |
 |---|---|---|
 | GET | `/api/casa` | Inventário, último estado recebido, data da atualização e conexão do POCO |
+| GET | `/api/auditoria` | Até 100 eventos recentes com comandos, resultados e mudanças de estado reportadas |
 | POST | `/api/dispositivos?acao=ligar` | Liga todos os dispositivos que oferecem esse comando |
 | POST | `/api/dispositivos?acao=desligar&dispositivo=<id>` | Desliga um dispositivo pelo ID retornado no inventário |
 | POST | `/api/ar?acao=ligar&valor=23` | Liga o ar e ajusta para 23 °C. O valor é opcional |
